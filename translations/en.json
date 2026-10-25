@@ -1,0 +1,32 @@
+{
+  "settings": {
+    "app_launches": {
+      "label": "App launches",
+      "description": "Hint when the launcher, dock or taskbar opens an app that has a shortcut"
+    },
+    "workspace_switches": {
+      "label": "Workspace switches",
+      "description": "Hint when the bar or mouse switches workspace"
+    },
+    "show_count": {
+      "label": "Show count",
+      "description": "Show how often a shortcut was suggested"
+    },
+    "notifications": {
+      "label": "Use notifications",
+      "description": "Show hints as notifications instead of the box in the corner"
+    },
+    "launch_window_ms": {
+      "label": "Launch window (ms)",
+      "description": "How long after a launch a new window counts"
+    },
+    "cooldown_s": {
+      "label": "Repeat cooldown (s)",
+      "description": "Time before the same shortcut is suggested again"
+    },
+    "launcher_layers": {
+      "label": "Launcher layers",
+      "description": "Fallback only: layers whose closing arms a launch hint"
+    }
+  }
+}

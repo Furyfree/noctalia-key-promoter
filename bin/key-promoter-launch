@@ -1,0 +1,6 @@
+#!/bin/sh
+# Tell the Key Promoter that the shell UI launched this app, then start it.
+# Noctalia runs it as: launch_apps_custom_command = "key-promoter-launch $CMD"
+name=$(basename -- "$1" | tr -cd 'A-Za-z0-9._-')
+hyprctl dispatch "hl.dsp.event(\"keypromoter:ui-launch,$name\")" >/dev/null 2>&1
+exec uwsm-app -- "$@"

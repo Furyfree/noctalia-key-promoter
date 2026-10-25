@@ -1,0 +1,82 @@
+id = "furyfree/key-promoter"
+name = "Key Promoter"
+version = "0.1.0"
+plugin_api = 30
+author = "furyfree"
+license = "MIT"
+dependencies = ["hyprctl", "socat", "stdbuf"]
+tags = ["utility", "hyprland"]
+icon = "keyboard"
+description = "Shows the Hyprland shortcut when you open an app or switch workspace with the mouse."
+
+[[setting]]
+key = "app_launches"
+type = "bool"
+label_key = "settings.app_launches.label"
+description_key = "settings.app_launches.description"
+default = true
+
+[[setting]]
+key = "workspace_switches"
+type = "bool"
+label_key = "settings.workspace_switches.label"
+description_key = "settings.workspace_switches.description"
+default = true
+
+[[setting]]
+key = "show_count"
+type = "bool"
+label_key = "settings.show_count.label"
+description_key = "settings.show_count.description"
+default = true
+
+[[setting]]
+key = "notifications"
+type = "bool"
+label_key = "settings.notifications.label"
+description_key = "settings.notifications.description"
+default = false
+
+[[setting]]
+key = "launch_window_ms"
+type = "int"
+label_key = "settings.launch_window_ms.label"
+description_key = "settings.launch_window_ms.description"
+default = 3000
+min = 500
+max = 10000
+step = 100
+
+[[setting]]
+key = "cooldown_s"
+type = "int"
+label_key = "settings.cooldown_s.label"
+description_key = "settings.cooldown_s.description"
+default = 10
+min = 0
+max = 300
+step = 1
+
+[[setting]]
+key = "launcher_layers"
+type = "string_list"
+label_key = "settings.launcher_layers.label"
+description_key = "settings.launcher_layers.description"
+default = ["noctalia-panel", "noctalia-attached-panel"]
+
+[[service]]
+id = "service"
+entry = "service.luau"
+
+# The hint box: stays out of the one-panel slot and never takes keyboard focus.
+[[panel]]
+id = "toast"
+entry = "toast.luau"
+width = 380
+height = 56
+placement = "floating"
+position = "bottom_right"
+layer = "overlay"
+persistent = true
+keyboard_focus = "none"
+dismiss_on_outside_click = false
