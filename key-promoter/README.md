@@ -11,7 +11,7 @@ you did not use the keyboard.
 | Field | Value |
 | --- | --- |
 | ID | `furyfree/key-promoter` |
-| Entries | service: `service`; panel: `toast` |
+| Entries | service: `service`; panels: `hint-box-1`, `hint-box-2`, `hint-box-3` |
 
 ## Requirements
 
@@ -25,12 +25,18 @@ you did not use the keyboard.
 Enable **Key Promoter** under Settings → Plugins. Nothing else to set up.
 
 - **App launches:** open an app from the launcher that has a bind, and the box
-  shows that bind, for example `SUPER` `SHIFT` `Z` Open Zed ×2.
+  shows that bind, for example `SUPER` `SHIFT` `Z` Open Zed. Slow apps are
+  fine: the plugin keeps looking for the app's window for up to 10 seconds.
 - **Workspace switches:** click a workspace on the bar, and the box shows the
-  workspace key.
+  workspace key. Up to three hints stack in the box, newest at the bottom.
+- **Apps without a shortcut:** open the same app from the launcher 5 times
+  within 24 hours when no bind matches it, and the box says "No shortcut found
+  for Fastmail". It does not repeat for that app until 24 hours have passed.
+  The number and the period (hour, day, week or month) are settings.
 
-Pressing the shortcut itself never shows a hint. The `toast` panel is opened
-and closed by the service; you do not open it yourself.
+Pressing the shortcut itself never shows a hint. The box is three panels, one
+per number of rows (`hint-box-1` to `hint-box-3`), opened and closed by the service;
+you do not open them yourself.
 
 Preview the box:
 
@@ -58,14 +64,13 @@ noctalia msg plugin furyfree/key-promoter:service all show "SUPER + B|Open Brave
 | --- | --- | --- | --- |
 | `app_launches` | `bool` | `true` | Hint when the launcher, dock or taskbar opens an app that has a bind. |
 | `workspace_switches` | `bool` | `true` | Hint when the bar or mouse switches workspace. |
-| `show_count` | `bool` | `true` | Show how often a shortcut was suggested (×N). |
+| `suggest_after` | `int` | `5` | Launches of an app without a shortcut before suggesting one; `0` turns it off. |
+| `suggest_period` | `select` | `day` | Those launches must fall within the last `hour`, `day` (24 h), `week` (7 days) or `month` (30 days). A suggestion for an app is not repeated within the same period. |
+| `ignore` | `string_list` | empty | Never show for these: an app as named in the box (`Lutris`) or by a part of its window class (`brave`), or a shortcut (`SUPER + 3`). Capitals and spaces don't matter. |
 | `notifications` | `bool` | `false` | Show hints as Noctalia notifications instead of the box. |
-| `launch_window_ms` | `int` | `3000` | How long after a launch a new window counts, in milliseconds. |
-| `cooldown_s` | `int` | `10` | Seconds before the same shortcut is suggested again. |
-| `launcher_layers` | `string_list` | `noctalia-panel`, `noctalia-attached-panel` | Without the launch wrapper: layers whose closing arms a launch hint. |
 
-The box's position and layer are set on the `toast` panel's row in the same
-settings page.
+The box's position and layer are set per panel (`hint-box-1` to `hint-box-3`) in the
+same settings page; give all three the same values.
 
 ## IPC
 
@@ -88,7 +93,9 @@ noctalia msg plugin $P all reset                                 # clear counts
 - **Commands run:** `stdbuf -oL socat` on Hyprland's event socket,
   `hyprctl binds -j`, `hyprctl eval`, and `noctalia msg status` when the
   launch wrapper is not set up.
-- **Files written:** `counts.json` in the plugin's data directory. The snippet
+- **Files written:** `counts.json` (hints shown per shortcut) and
+  `unbound.json` (recent launches of apps without a shortcut) in the plugin's
+  data directory. The snippet
   writes its bind list to `$XDG_RUNTIME_DIR/hypr-key-promoter.tsv`.
 - **No network access.**
 - **Not detected:** actions that open no window, such as screenshots, and apps

@@ -1,6 +1,7 @@
 --!nonstrict
--- Key Promoter toast: shows the current hint as key caps in a small corner box.
--- The service sets the "hint" state and opens and closes this panel.
+-- Key Promoter toast: shows the current hints as key caps in a small corner box,
+-- newest at the bottom. The service sets the "hints" state and opens and
+-- closes this panel.
 
 local function keycap(key: string)
     return ui.row({
@@ -16,11 +17,7 @@ local function keycap(key: string)
     })
 end
 
-local function render()
-    local hint = noctalia.state.get("hint")
-    if type(hint) ~= "table" then
-        return
-    end
+local function hintRow(hint)
     local items = {}
     for key in string.gmatch(hint.combo or "", "[^+]+") do
         key = string.match(key, "^%s*(.-)%s*$")
@@ -35,14 +32,23 @@ local function render()
         maxLines = 1,
         flexGrow = 1,
     }))
-    if hint.count then
-        table.insert(items, ui.label({ text = `×{hint.count}`, fontSize = 12, color = "primary" }))
+    return ui.row({ key = `{hint.at}`, gap = 6, align = "center" }, items)
+end
+
+local function render()
+    local hints = noctalia.state.get("hints")
+    if type(hints) ~= "table" then
+        return
     end
-    pcall(panel.render, ui.row({ gap = 6, align = "center", flexGrow = 1 }, items))
+    local items = {}
+    for _, hint in hints do
+        table.insert(items, hintRow(hint))
+    end
+    pcall(panel.render, ui.column({ gap = 8, justify = "end", flexGrow = 1 }, items))
 end
 
 function onOpen()
     render()
 end
 
-noctalia.state.watch("hint", render)
+noctalia.state.watch("hints", render)

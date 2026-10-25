@@ -2,7 +2,7 @@
 -- Pure logic for the Key Promoter. No Noctalia calls, so plain Luau can test it.
 local M = {}
 
-M.VERSION = "0.1.0"
+M.VERSION = "0.2.0"
 
 -- Fixed rule timings in milliseconds.
 M.BIND_QUIET_MS = 750 -- a workspace change this soon after a bind came from it
@@ -12,8 +12,12 @@ M.SETTLE_MS = 250
 M.EXPLAIN_MS = 1500 -- a closed layer, new window or urgent app explains a workspace change
 M.SLOW_APP_MS = 10000 -- a window this soon after its own bind answers that bind
 M.STARTUP_MS = 3000
-M.HINT_GAP_MS = 1500
+M.HINT_GAP_MS = 1500 -- between workspace hints, so scrolling the bar gives one
 M.MIN_SCORE = 20
+M.LAUNCH_WINDOW_MS = 10000 -- how long to look for a launched app's window (slow apps)
+M.WORKSPACE_COOLDOWN_MS = 10000 -- before the same workspace hint repeats
+-- Without the launch wrapper, these layers closing after the launcher opened arm a launch.
+M.LAUNCHER_LAYERS = { "noctalia-panel", "noctalia-attached-panel" }
 
 -- Layers whose closing explains a workspace change.
 M.EXPLAINING_LAYERS = {
@@ -340,6 +344,31 @@ function M.score(bind, class: string, title: string): (number, number)
             bonus += 1
         end
     end
+    -- A description word naming a part of the class: "Brave" names
+    -- brave-origin, "Zed" names dev.zed.Zed. Chromium web apps
+    -- (brave-www.fotmob.com__-Default) only borrow the browser's name.
+    if base < 20 and #bind.command == 0 and not string.find(class, "__", 1, true) then
+        local parts = {}
+        for part in string.gmatch(class, "[^%.%-_]+") do
+            parts[part] = true
+        end
+        for _, word in words(bind.description) do
+            if parts[word] then
+                base = 20
+            end
+        end
+    end
+    -- Two-word names: "T3 Code" names the class com.t3tools.T3Code.
+    if base < 20 and #bind.command == 0 then
+        local previous = nil
+        for word in string.gmatch(string.lower(bind.description), "[%w]+") do
+            local joined = previous and previous .. word
+            if joined and #joined >= 4 and (joined == class or joined == segment) then
+                base = 20
+            end
+            previous = word
+        end
+    end
     return base, base + bonus - 0.1 * args
 end
 
@@ -407,16 +436,100 @@ function M.matchWorkspace(binds, name: string)
     return pickWinner(best)
 end
 
+-- Never show for ------------------------------------------------------------
+
+-- A readable app name: the end of the window class, or the title when the
+-- class is not a plain name (web apps).
+function M.appName(class: string, title: string): string
+    local name = string.match(class, "([^.]+)$") or class
+    if string.find(name, "[^%w%- ]") and title ~= "" then
+        return title
+    end
+    return name
+end
+
+local function normalized(text: string): string
+    return (string.gsub(string.lower(text), "%s", ""))
+end
+
+-- True when the user's "Never show for" list names this app (by its name in
+-- the box, the whole class or a part of it) or this shortcut. Entries with a
+-- "+" are shortcuts; spaces and capital letters do not matter.
+function M.isIgnored(list, class: string?, title: string?, combo: string?): boolean
+    if type(list) ~= "table" then
+        return false
+    end
+    local names = {}
+    if class and class ~= "" then
+        names[normalized(class)] = true
+        names[normalized(M.appName(class, title or ""))] = true
+        for part in string.gmatch(string.lower(class), "[^%.%-_]+") do
+            names[part] = true
+        end
+    end
+    for _, entry in list do
+        local wanted = normalized(tostring(entry))
+        if wanted ~= "" then
+            if string.find(wanted, "+", 1, true) then
+                if combo and normalized(combo) == wanted then
+                    return true
+                end
+            elseif names[wanted] then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Apps without a shortcut -----------------------------------------------------
+
+M.SUGGEST_PERIOD_MS = {
+    hour = 3600000,
+    day = 86400000,
+    week = 604800000,
+    month = 2592000000,
+}
+
+-- Counts one shell launch of an app without a shortcut and says whether to
+-- suggest one: `threshold` launches within the last `periodMs`, and at most
+-- once per period per app. `store` is { apps = { [app] = { launches, suggestedAt } } },
+-- saved by the service; apps with nothing left inside the period are dropped.
+function M.countUnbound(store, app: string, nowMs: number, threshold: number, periodMs: number): boolean
+    store.apps = store.apps or {}
+    for name, entry in store.apps do
+        local kept = {}
+        for _, at in entry.launches or {} do
+            if nowMs - at < periodMs then
+                table.insert(kept, at)
+            end
+        end
+        entry.launches = kept
+        if #kept == 0 and nowMs - (entry.suggestedAt or 0) >= periodMs then
+            store.apps[name] = nil
+        end
+    end
+    local entry = store.apps[app] or { launches = {} }
+    store.apps[app] = entry
+    table.insert(entry.launches, nowMs)
+    if #entry.launches >= threshold and (not entry.suggestedAt or nowMs - entry.suggestedAt >= periodMs) then
+        entry.suggestedAt = nowMs
+        return true
+    end
+    return false
+end
+
 -- Tracker -------------------------------------------------------------------
 
 local Tracker = {}
 Tracker.__index = Tracker
 
--- Settings: appLaunches, workspaceSwitches, launchWindowMs, cooldownMs,
--- launcherLayers (list) and wrapper (true when launch markers arrive).
+-- Settings: appLaunches, workspaceSwitches, toast, ignore, wrapper (true when
+-- launch markers arrive); tests may override launchWindowMs, cooldownMs and
+-- launcherLayers, which otherwise use the M.* defaults.
 function M.newTracker(settings, binds, nowMs: number)
     local layers = {}
-    for _, name in settings.launcherLayers or {} do
+    for _, name in settings.launcherLayers or M.LAUNCHER_LAYERS do
         layers[name] = true
     end
     return setmetatable({
@@ -426,12 +539,12 @@ function M.newTracker(settings, binds, nowMs: number)
         startedAt = nowMs,
         lastBindAt = -math.huge,
         bindAt = {},
-        armedAt = nil,
+        launch = nil, -- { at, first } while looking for a launched app's window
         launcherOpen = false,
         explainedAt = -math.huge,
         ownNotification = false,
         hintPending = false,
-        lastHintAt = -math.huge,
+        lastWorkspaceHintAt = -math.huge,
         hintAt = {},
     }, Tracker)
 end
@@ -465,32 +578,72 @@ function Tracker:explain(nowMs: number)
     self.explainedAt = nowMs
 end
 
-function Tracker:hint(bind, nowMs: number)
-    if nowMs - self.lastHintAt < M.HINT_GAP_MS then
+-- Every app launch gets its hint; workspace hints keep a gap and a per-key
+-- cooldown so scrolling or clicking around the bar does not flood the box.
+function Tracker:hint(bind, nowMs: number, workspace: boolean?)
+    if M.isIgnored(self.settings.ignore, nil, nil, bind.combo) then
         return nil
     end
-    if nowMs - (self.hintAt[bind.combo] or -math.huge) < (self.settings.cooldownMs or 0) then
-        return nil
+    if workspace then
+        if nowMs - self.lastWorkspaceHintAt < M.HINT_GAP_MS
+            or nowMs - (self.hintAt[bind.combo] or -math.huge) < (self.settings.cooldownMs or M.WORKSPACE_COOLDOWN_MS) then
+            return nil
+        end
+        self.lastWorkspaceHintAt = nowMs
+        self.hintAt[bind.combo] = nowMs
     end
-    self.lastHintAt = nowMs
-    self.hintAt[bind.combo] = nowMs
     -- A notification hint opens the notification layer; the corner box does not.
     self.hintPending = not self.settings.toast
     return { combo = bind.combo, description = bind.description }
 end
 
+-- A shell launch arms a search for the app's window.
+function Tracker:arm(nowMs: number)
+    local unbound = self:finishLaunch()
+    self.launch = if self.settings.appLaunches then { at = nowMs } else nil
+    return unbound
+end
+
+-- Ends the search. If no window matched a bind, the first window that opened
+-- is reported as an app without a shortcut: { unbound = true, class, title }.
+function Tracker:finishLaunch()
+    local launch = self.launch
+    self.launch = nil
+    local first = launch and launch.first
+    if first and self.lastBindAt <= launch.at
+        and not M.isIgnored(self.settings.ignore, first.class, first.title) then
+        return { unbound = true, class = first.class, title = first.title }
+    end
+    return nil
+end
+
+-- Windows that match no bind (splash screens, helpers) keep the search going
+-- until one matches or launchWindowMs runs out; tick() ends it then.
 function Tracker:onWindow(event, nowMs: number)
-    local armedAt = self.armedAt
-    self.armedAt = nil
     self:explain(nowMs)
-    if not self.settings.appLaunches or not armedAt then
+    local launch = self.launch
+    if not launch then
         return nil
     end
-    if nowMs - armedAt > (self.settings.launchWindowMs or 3000) or self.lastBindAt > armedAt then
+    if nowMs - launch.at > (self.settings.launchWindowMs or M.LAUNCH_WINDOW_MS) then
+        return self:finishLaunch()
+    end
+    -- An ignored app ends the search quietly: no hint, nothing counted.
+    if M.isIgnored(self.settings.ignore, event.class, event.title) then
+        self.launch = nil
+        return nil
+    end
+    if self.lastBindAt > launch.at then
+        self.launch = nil
         return nil
     end
     local bind = M.matchWindow(self.binds, event.class, event.title)
-    if not bind or nowMs - (self.bindAt[bind.combo] or -math.huge) < M.SLOW_APP_MS then
+    if not bind then
+        launch.first = launch.first or { class = event.class, title = event.title }
+        return nil
+    end
+    self.launch = nil
+    if nowMs - (self.bindAt[bind.combo] or -math.huge) < M.SLOW_APP_MS then
         return nil
     end
     return self:hint(bind, nowMs)
@@ -502,8 +655,12 @@ function Tracker:onWorkspace(event, nowMs: number)
     return nil
 end
 
--- Call regularly; returns a workspace hint once a change has settled.
+-- Call regularly; ends a launch search that ran out, and returns a workspace
+-- hint once a change has settled.
 function Tracker:tick(nowMs: number)
+    if self.launch and nowMs - self.launch.at > (self.settings.launchWindowMs or M.LAUNCH_WINDOW_MS) then
+        return self:finishLaunch()
+    end
     local pending = self.pendingWorkspace
     if not pending or nowMs - pending.at < M.SETTLE_MS then
         return nil
@@ -516,14 +673,15 @@ function Tracker:tick(nowMs: number)
         return nil
     end
     local bind = M.matchWorkspace(self.binds, pending.name)
-    return bind and self:hint(bind, nowMs)
+    return bind and self:hint(bind, nowMs, true)
 end
 
 function Tracker:hasPending(): boolean
-    return self.pendingWorkspace ~= nil
+    return self.pendingWorkspace ~= nil or self.launch ~= nil
 end
 
--- Feeds one parsed event; returns a hint { combo, description } or nil.
+-- Feeds one parsed event; returns a hint { combo, description }, an app
+-- without a shortcut { unbound = true, class, title }, or nil.
 function Tracker:handle(event, nowMs: number)
     local kind = event.kind
     if kind == "bind" then
@@ -531,7 +689,7 @@ function Tracker:handle(event, nowMs: number)
         self.bindAt[event.combo] = nowMs
     elseif kind == "launch" then
         if self.settings.wrapper then
-            self.armedAt = nowMs
+            return self:arm(nowMs)
         end
     elseif kind == "openlayer" then
         if event.namespace == "noctalia-notification" then
@@ -540,15 +698,17 @@ function Tracker:handle(event, nowMs: number)
         end
     elseif kind == "closelayer" then
         local namespace = event.namespace
+        local unbound = nil
         if not self.settings.wrapper and self.launcherLayers[namespace] and self.launcherOpen then
             self.launcherOpen = false
-            self.armedAt = nowMs
+            unbound = self:arm(nowMs)
         end
         if namespace == "noctalia-notification" and self.ownNotification then
             self.ownNotification = false
         elseif M.EXPLAINING_LAYERS[namespace] then
             self:explain(nowMs)
         end
+        return unbound
     elseif kind == "urgent" then
         self:explain(nowMs)
     elseif kind == "openwindow" then

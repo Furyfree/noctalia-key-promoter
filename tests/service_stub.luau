@@ -12,14 +12,14 @@ host = {
     streamCommand = "",
     state = {},
     toggles = 0,
+    toggleLog = {},
+    encoded = 0,
+    clock = 1800000000, -- os.time() in seconds
     config = {
         notifications = true,
         app_launches = true,
         workspace_switches = true,
-        show_count = true,
-        launch_window_ms = 3000,
-        cooldown_s = 10,
-        launcher_layers = { "noctalia-panel", "noctalia-attached-panel" },
+        suggest_after = 5,
     },
     settings = { ["shell.launch_apps_custom_command"] = "key-promoter-launch $CMD" },
     env = { XDG_RUNTIME_DIR = "/run/user/1000", HYPRLAND_INSTANCE_SIGNATURE = "abc" },
@@ -30,6 +30,14 @@ host.files["/run/user/1000/hypr-key-promoter.tsv"] = table.concat({
     "SUPER + 3\tSwitch to local workspace 3\t\t\t",
 }, "\n") .. "\n"
 
+-- Wall-clock time for the saved launch counts.
+os = { time = function() return host.clock end }
+
+-- Reads back a file the service saved as JSON.
+function saved(path)
+    return host.json[host.files[path] or ""]
+end
+
 noctalia = {
     pluginDataDir = function() return "/data" end,
     readFile = function(path) return host.files[path] end,
@@ -38,7 +46,8 @@ noctalia = {
         return true
     end,
     mkdirAll = function() return true end,
-    -- JSON text in the tests is a key into host.json; encode stores the table.
+    -- JSON text in the tests is a key into host.json; encode stores a copy of
+    -- the table under a fresh key, so saved files can be read back.
     json = {
         decode = function(text)
             local value = host.json[text]
@@ -46,8 +55,10 @@ noctalia = {
             return value
         end,
         encode = function(value)
-            host.json["encoded"] = value
-            return "encoded"
+            host.encoded += 1
+            local key = `encoded{host.encoded}`
+            host.json[key] = value
+            return key
         end,
     },
     getConfig = function(key) return host.config[key] end,
@@ -65,6 +76,7 @@ noctalia = {
     togglePanel = function(id)
         host.toggles += 1
         host.toggled = id
+        table.insert(host.toggleLog, (string.gsub(id, "^furyfree/key%-promoter:hint%-box%-", "")))
     end,
     state = {
         set = function(key, value) host.state[key] = value end,

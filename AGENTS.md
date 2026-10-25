@@ -17,8 +17,13 @@ Paths below are inside `key-promoter/` unless they start with `tests/`.
 - `README.md`, `thumbnail.webp`: the plugin's store page and card.
 - `service.luau`: Noctalia service: socket2 stream, shadow binds through
   `hyprctl eval`, hints, IPC.
-- `toast.luau`: the corner box, a persistent panel that never takes focus. The
-  service opens and closes it and passes the hint through `noctalia.state`.
+- `toast.luau`: the corner box, drawn by three persistent panels (`hint-box-1`..
+  `hint-box-3`, one per row count, since persistent panels have a fixed height).
+  The service opens the one that fits, new before old, and passes the hints
+  through `noctalia.state`. The swap can blink faintly. Once Noctalia supports
+  `height = "content"` for persistent panels (`panel-content-height`, API 42,
+  unreleased and not yet for persistent panels), replace the three with one
+  panel that fits its rows.
 - `promoter.luau`: pure logic with no Noctalia calls, tested under plain Luau.
 - `hypr/key-promoter.lua`: Hyprland Lua snippet (Lua 5.5, not Luau). Wraps
   `hl.bind` and writes the bind list to `$XDG_RUNTIME_DIR`.

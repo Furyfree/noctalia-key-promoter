@@ -1,6 +1,6 @@
 id = "furyfree/key-promoter"
 name = "Key Promoter"
-version = "0.1.0"
+version = "0.2.0"
 plugin_api = 30
 author = "furyfree"
 license = "MIT"
@@ -24,11 +24,34 @@ description_key = "settings.workspace_switches.description"
 default = true
 
 [[setting]]
-key = "show_count"
-type = "bool"
-label_key = "settings.show_count.label"
-description_key = "settings.show_count.description"
-default = true
+key = "suggest_after"
+type = "int"
+label_key = "settings.suggest_after.label"
+description_key = "settings.suggest_after.description"
+default = 5
+min = 0
+max = 50
+step = 1
+
+[[setting]]
+key = "suggest_period"
+type = "select"
+label_key = "settings.suggest_period.label"
+description_key = "settings.suggest_period.description"
+default = "day"
+options = [
+    { value = "hour", label_key = "settings.suggest_period.hour" },
+    { value = "day", label_key = "settings.suggest_period.day" },
+    { value = "week", label_key = "settings.suggest_period.week" },
+    { value = "month", label_key = "settings.suggest_period.month" },
+]
+
+[[setting]]
+key = "ignore"
+type = "string_list"
+label_key = "settings.ignore.label"
+description_key = "settings.ignore.description"
+default = []
 
 [[setting]]
 key = "notifications"
@@ -37,43 +60,42 @@ label_key = "settings.notifications.label"
 description_key = "settings.notifications.description"
 default = false
 
-[[setting]]
-key = "launch_window_ms"
-type = "int"
-label_key = "settings.launch_window_ms.label"
-description_key = "settings.launch_window_ms.description"
-default = 3000
-min = 500
-max = 10000
-step = 100
-
-[[setting]]
-key = "cooldown_s"
-type = "int"
-label_key = "settings.cooldown_s.label"
-description_key = "settings.cooldown_s.description"
-default = 10
-min = 0
-max = 300
-step = 1
-
-[[setting]]
-key = "launcher_layers"
-type = "string_list"
-label_key = "settings.launcher_layers.label"
-description_key = "settings.launcher_layers.description"
-default = ["noctalia-panel", "noctalia-attached-panel"]
-
 [[service]]
 id = "service"
 entry = "service.luau"
 
-# The hint box: stays out of the one-panel slot and never takes keyboard focus.
+# The hint box, one entry per row count: persistent panels have a fixed height,
+# so the service swaps between them as hints come and go. They stay out of the
+# one-panel slot and never take keyboard focus.
 [[panel]]
-id = "toast"
+id = "hint-box-1"
 entry = "toast.luau"
 width = 380
 height = 56
+placement = "floating"
+position = "bottom_right"
+layer = "overlay"
+persistent = true
+keyboard_focus = "none"
+dismiss_on_outside_click = false
+
+[[panel]]
+id = "hint-box-2"
+entry = "toast.luau"
+width = 380
+height = 92
+placement = "floating"
+position = "bottom_right"
+layer = "overlay"
+persistent = true
+keyboard_focus = "none"
+dismiss_on_outside_click = false
+
+[[panel]]
+id = "hint-box-3"
+entry = "toast.luau"
+width = 380
+height = 128
 placement = "floating"
 position = "bottom_right"
 layer = "overlay"

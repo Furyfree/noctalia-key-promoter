@@ -1,32 +1,32 @@
 {
   "settings": {
     "app_launches": {
-      "label": "App launches",
-      "description": "Hint when the launcher, dock or taskbar opens an app that has a shortcut"
+      "label": "Hint for apps",
+      "description": "Show the shortcut when you open an app from the launcher"
     },
     "workspace_switches": {
-      "label": "Workspace switches",
-      "description": "Hint when the bar or mouse switches workspace"
+      "label": "Hint for workspaces",
+      "description": "Show the shortcut when you switch workspace from the bar"
     },
-    "show_count": {
-      "label": "Show count",
-      "description": "Show how often a shortcut was suggested"
+    "suggest_after": {
+      "label": "Suggest a shortcut after (launches)",
+      "description": "For apps without a shortcut, how many launches before saying so; 0 turns it off"
+    },
+    "suggest_period": {
+      "label": "Counted over",
+      "description": "Only launches within this time count",
+      "hour": "The last hour",
+      "day": "The last 24 hours",
+      "week": "The last 7 days",
+      "month": "The last 30 days"
+    },
+    "ignore": {
+      "label": "Never show for",
+      "description": "An app as named in the box, like Lutris, or a shortcut, like SUPER + 3. Capitals don't matter"
     },
     "notifications": {
       "label": "Use notifications",
       "description": "Show hints as notifications instead of the box in the corner"
-    },
-    "launch_window_ms": {
-      "label": "Launch window (ms)",
-      "description": "How long after a launch a new window counts"
-    },
-    "cooldown_s": {
-      "label": "Repeat cooldown (s)",
-      "description": "Time before the same shortcut is suggested again"
-    },
-    "launcher_layers": {
-      "label": "Launcher layers",
-      "description": "Fallback only: layers whose closing arms a launch hint"
     }
   }
 }

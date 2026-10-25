@@ -141,7 +141,7 @@ local windows = {
     { "vscodium", "VSCodium", "SUPER + SHIFT + V" },
     { "com.mitchellh.ghostty", "btop", "SUPER + Return" },
     { "com.onepassword.OnePassword", "1Password", "none" },
-    { "com.t3tools.T3Code", "T3 Code (Beta)", "none" },
+    { "com.t3tools.T3Code", "T3 Code (Beta)", "SUPER + SHIFT + T" },
     { "brave-www.fotmob.com__-Default", "www.fotmob.com_/", "none" },
     { "org.mozilla.firefox", "Mozilla Firefox", "none" },
 }
@@ -152,10 +152,34 @@ check(comboOf(promoter.matchWorkspace(desktop, "8")), "SUPER + 8", "real list: w
 check(comboOf(promoter.matchWorkspace(desktop, "1")), "SUPER + 1", "real list: workspace 1")
 check(comboOf(promoter.matchWorkspace(desktop, "10")), "SUPER + 0", "real list: workspace 10")
 
+-- The same desktop as `hyprctl binds -j` reports it: descriptions only, no
+-- commands. This is what the plugin sees without the snippet.
+local described = promoter.bindsFromHyprctl(require("./fixtures/desktop_hyprctl"))
+local describedWindows = {
+    { "dev.zed.Zed", "main.rs", "SUPER + SHIFT + Z" },
+    { "brave-origin", "New Tab - Brave Origin", "SUPER + SHIFT + B" },
+    { "md.obsidian.Obsidian", "Notes", "SUPER + SHIFT + O" },
+    { "signal", "Signal", "SUPER + SHIFT + G" },
+    { "vesktop", "Discord", "SUPER + SHIFT + D" },
+    { "Vesktop", "Discord", "SUPER + SHIFT + D" },
+    { "vscodium", "VSCodium", "SUPER + SHIFT + V" },
+    { "com.t3tools.T3Code", "T3 Code (Beta)", "SUPER + SHIFT + T" },
+    { "com.fastmail.Fastmail", "Inbox", "SUPER + SHIFT + E" },
+    { "com.mitchellh.ghostty", "btop", "SUPER + Return" },
+    { "brave-www.fotmob.com__-Default", "www.fotmob.com_/", "none" },
+    { "net.lutris.Lutris", "Lutris", "none" },
+    { "ai.storyteller.filmcraft", "FilmCraft", "none" },
+    { "org.mozilla.firefox", "Mozilla Firefox", "none" },
+}
+for _, case in describedWindows do
+    check(comboOf(promoter.matchWindow(described, case[1], case[2])), case[3], `hyprctl list: {case[1]}`)
+end
+
 -- Tracker
 local zedBinds = {
     bind("SUPER + SHIFT + Z", "Open Zed", "uwsm-app -- zeditor"),
     bind("SUPER + 3", "Switch to local workspace 3"),
+    bind("SUPER + 2", "Switch to local workspace 2"),
 }
 local settings = {
     appLaunches = true, workspaceSwitches = true, launchWindowMs = 3000, cooldownMs = 10000,
@@ -184,6 +208,40 @@ t = promoter.newTracker(settings, zedBinds, 0)
 feed(t, "custom>>keypromoter:ui-launch,zeditor", 5000)
 check(feed(t, zedWindow, 9000), nil, "window after the launch window")
 
+-- The search skips windows that match no bind until one matches.
+local splash = "openwindow>>2,1,zed-splash,Loading"
+t = promoter.newTracker(settings, zedBinds, 0)
+feed(t, "custom>>keypromoter:ui-launch,zeditor", 5000)
+check(feed(t, splash, 5200), nil, "a window without a bind keeps the search going")
+check(comboOf(feed(t, zedWindow, 7000)), "SUPER + SHIFT + Z", "the app's own window still hints")
+check(t:hasPending(), false, "search over after a match")
+
+-- Nothing matched before the deadline: the first window is an app without a shortcut.
+t = promoter.newTracker(settings, zedBinds, 0)
+feed(t, "custom>>keypromoter:ui-launch,fastmail", 5000)
+feed(t, "openwindow>>3,1,com.fastmail.Fastmail,Inbox", 5500)
+feed(t, "openwindow>>4,1,other,Other", 5600)
+check(t:tick(7000), nil, "still searching before the deadline")
+local unbound = t:tick(8100)
+check(unbound and unbound.unbound, true, "deadline reports an app without a shortcut")
+check(unbound and unbound.class, "com.fastmail.Fastmail", "the first window counts")
+
+t = promoter.newTracker(settings, zedBinds, 0)
+feed(t, "custom>>keypromoter:ui-launch,fastmail", 5000)
+feed(t, "openwindow>>3,1,com.fastmail.Fastmail,Inbox", 5500)
+local early = feed(t, "custom>>keypromoter:ui-launch,zeditor", 6000)
+check(early and early.class, "com.fastmail.Fastmail", "a new launch ends the previous search")
+
+t = promoter.newTracker(settings, zedBinds, 0)
+feed(t, "custom>>keypromoter:ui-launch,fastmail", 5000)
+feed(t, "openwindow>>3,1,com.fastmail.Fastmail,Inbox", 5500)
+feed(t, "custom>>keypromoter:bind,SUPER + 3", 6000)
+check(t:tick(8100), nil, "a key press cancels the suggestion")
+
+t = promoter.newTracker(settings, zedBinds, 0)
+feed(t, "custom>>keypromoter:ui-launch,fastmail", 5000)
+check(t:tick(8100), nil, "no window, nothing to suggest")
+
 t = promoter.newTracker(settings, zedBinds, 0)
 feed(t, "custom>>keypromoter:ui-launch,zeditor", 5000)
 feed(t, "custom>>keypromoter:bind,SUPER + 3", 5100)
@@ -203,7 +261,7 @@ t = promoter.newTracker(settings, zedBinds, 0)
 feed(t, "custom>>keypromoter:ui-launch,zeditor", 5000)
 feed(t, zedWindow, 5500)
 feed(t, "custom>>keypromoter:ui-launch,zeditor", 8000)
-check(feed(t, zedWindow, 8500), nil, "cooldown for the same shortcut")
+check(comboOf(feed(t, zedWindow, 8500)), "SUPER + SHIFT + Z", "every launch hints, no cooldown")
 
 local fallbackSettings = table.clone(settings)
 fallbackSettings.wrapper = false
@@ -249,7 +307,12 @@ check(switch(t, 5000), nil, "other toast closing explains it")
 t = promoter.newTracker(settings, zedBinds, 0)
 switch(t, 5000)
 feed(t, "custom>>keypromoter:ui-launch,zeditor", 5200)
-check(feed(t, zedWindow, 5400), nil, "gap between any two hints")
+check(comboOf(feed(t, zedWindow, 5400)), "SUPER + SHIFT + Z", "no gap before a launch hint")
+
+t = promoter.newTracker(settings, zedBinds, 0)
+switch(t, 5000)
+feed(t, "workspacev2>>2,2", 5600)
+check(t:tick(5900), nil, "gap between workspace hints")
 
 -- Shadow binds: the marker follows the workspace change.
 t = promoter.newTracker(settings, zedBinds, 0)
@@ -264,6 +327,52 @@ t = promoter.newTracker(settings, zedBinds, 0)
 t:expectOwnPanel()
 check(t:isOwnPanelEvent(promoter.parseEvent("openlayer>>noctalia-panel")), true, "own box opening")
 check(t:isOwnPanelEvent(promoter.parseEvent("closelayer>>noctalia-panel")), false, "only as many as expected")
+
+-- Apps without a shortcut: N launches within a rolling period, once per period.
+local HOUR, DAY = promoter.SUGGEST_PERIOD_MS.hour, promoter.SUGGEST_PERIOD_MS.day
+local store = {}
+check(promoter.countUnbound(store, "fastmail", 0, 3, DAY), false, "1st launch")
+check(promoter.countUnbound(store, "fastmail", 1 * HOUR, 3, DAY), false, "2nd launch")
+check(promoter.countUnbound(store, "fastmail", 2 * HOUR, 3, DAY), true, "3rd launch within a day suggests")
+check(promoter.countUnbound(store, "fastmail", 3 * HOUR, 3, DAY), false, "not again within the day")
+check(promoter.countUnbound(store, "fastmail", 26 * HOUR, 3, DAY), false, "a day later, old launches dropped")
+check(promoter.countUnbound(store, "fastmail", 27 * HOUR, 3, DAY), false, "only two in the last day")
+check(promoter.countUnbound(store, "fastmail", 28 * HOUR, 3, DAY), true, "three in the last day again: suggests again")
+
+store = {}
+promoter.countUnbound(store, "lutris", 0, 3, DAY)
+promoter.countUnbound(store, "lutris", 23 * HOUR, 3, DAY)
+check(promoter.countUnbound(store, "lutris", 25 * HOUR, 3, DAY), false, "rolling: a launch 25 h ago no longer counts")
+check(promoter.countUnbound(store, "lutris", 25 * HOUR + 1, 3, DAY), true, "three within 24 h across midnight count")
+
+store = {}
+check(promoter.countUnbound(store, "zed", 0, 1, HOUR), true, "threshold 1 suggests at once")
+check(promoter.countUnbound(store, "other", 2 * HOUR, 5, HOUR), false, "another app")
+check(store.apps.zed, nil, "apps with nothing left in the period are dropped")
+check(promoter.countUnbound({}, "x", 0, 2, promoter.SUGGEST_PERIOD_MS.month), false, "month period counts")
+
+-- "Never show for": apps by name or class part, shortcuts with a "+".
+local ignore = { "Lutris", " super+3 ", "brave", "FotMob" }
+check(promoter.isIgnored(ignore, "net.lutris.Lutris", "Lutris"), true, "ignore by app name")
+check(promoter.isIgnored(ignore, "brave-origin", "New tab"), true, "ignore by class part")
+check(promoter.isIgnored(ignore, "brave-www.fotmob.com__-Default", "FotMob"), true, "ignore a web app by its title")
+check(promoter.isIgnored(ignore, "dev.zed.Zed", "Zed"), false, "other apps still show")
+check(promoter.isIgnored(ignore, nil, nil, "SUPER + 3"), true, "ignore a shortcut, spaces and capitals aside")
+check(promoter.isIgnored(ignore, nil, nil, "SUPER + 2"), false, "other shortcuts still show")
+check(promoter.isIgnored(nil, "net.lutris.Lutris", "Lutris"), false, "no list, nothing ignored")
+
+local ignoring = table.clone(settings)
+ignoring.ignore = { "Zed", "SUPER + 3" }
+t = promoter.newTracker(ignoring, zedBinds, 0)
+feed(t, "custom>>keypromoter:ui-launch,zeditor", 5000)
+check(feed(t, zedWindow, 5500), nil, "an ignored app gets no hint")
+check(t:hasPending(), false, "and ends the search")
+check(switch(t, 9000), nil, "an ignored shortcut gets no hint")
+ignoring.ignore = { "Fastmail" }
+t = promoter.newTracker(ignoring, zedBinds, 0)
+feed(t, "custom>>keypromoter:ui-launch,fastmail", 5000)
+feed(t, "openwindow>>3,1,com.fastmail.Fastmail,Inbox", 5500)
+check(t:tick(16000), nil, "an ignored app is not suggested either")
 
 local quiet = table.clone(settings)
 quiet.workspaceSwitches = false

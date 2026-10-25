@@ -54,28 +54,56 @@ check(string.find(lastLog(), "2 binds from snippet", 1, true) ~= nil, true, "sta
 check(string.find(lastLog(), "shadow binds on", 1, true) ~= nil, true, "state: shadow binds on")
 check(string.find(lastLog(), "wrapper found", 1, true) ~= nil, true, "state: wrapper found")
 
--- A shell launch shows a hint with its count, and the count is saved.
+-- A shell launch shows a hint, and its count is saved for stats.
 at(5000, "custom>>keypromoter:ui-launch,zeditor")
 at(5500, "openwindow>>1,1,dev.zed.Zed,Zed")
-check(lastNote(), "SUPER + SHIFT + Z|Open Zed  ×1", "launch hint")
-check(host.json["encoded"]["SUPER + SHIFT + Z"], 1, "count saved")
+check(lastNote(), "SUPER + SHIFT + Z|Open Zed", "launch hint")
+check(saved("/data/counts.json")["SUPER + SHIFT + Z"], 1, "count saved")
 
 -- A bar click on a workspace hints; a key press does not.
 at(8000, "workspacev2>>3,3")
 settle(8000 + 300)
-check(lastNote(), "SUPER + 3|Switch to local workspace 3  ×1", "workspace hint")
+check(lastNote(), "SUPER + 3|Switch to local workspace 3", "workspace hint")
 local before = #host.notes
 at(30000, "custom>>keypromoter:bind,SUPER + 3")
 at(30100, "workspacev2>>3,3")
 settle(30100 + 300)
 check(#host.notes, before, "announced switch stays quiet")
 
--- Show count off.
-host.config.show_count = false
-at(50000, "workspacev2>>3,3")
-settle(50000 + 300)
-check(lastNote(), "SUPER + 3|Switch to local workspace 3", "no count")
-host.config.show_count = true
+-- An app without a shortcut, opened from the shell: suggested at the 2nd
+-- launch today, and only once. A new launch ends the previous search.
+host.config.suggest_after = 2
+local fastmail = "openwindow>>4,1,com.fastmail.Fastmail,Inbox"
+at(40000, "custom>>keypromoter:ui-launch,fastmail")
+at(40500, fastmail)
+before = #host.notes
+at(41000, "custom>>keypromoter:ui-launch,fastmail")
+check(#host.notes, before, "first launch without a shortcut stays quiet")
+at(41500, fastmail)
+at(42000, "custom>>keypromoter:ui-launch,fastmail")
+check(lastNote(), "Key Promoter|No shortcut found for Fastmail", "suggested at the threshold")
+before = #host.notes
+at(42500, fastmail)
+settle(53000)
+check(#host.notes, before, "suggested once per day")
+local saved_fastmail = saved("/data/unbound.json").apps["com.fastmail.fastmail"]
+check(#saved_fastmail.launches, 3, "launches saved to disk")
+
+-- Counted over the last hour: an hour later, old launches no longer count and
+-- the app can be suggested again.
+host.config.suggest_period = "hour"
+host.clock += 3700
+at(54000, "custom>>keypromoter:ui-launch,fastmail")
+at(54500, fastmail)
+before = #host.notes
+at(55000, "custom>>keypromoter:ui-launch,fastmail")
+check(#host.notes, before, "an hour later, one launch is not enough")
+at(55500, fastmail)
+at(56000, "custom>>keypromoter:ui-launch,fastmail")
+check(#host.notes, before + 1, "two launches within the hour suggest again")
+settle(67000)
+host.config.suggest_period = "day"
+host.config.suggest_after = 5
 
 -- Without the wrapper, only the launcher arms a launch hint.
 host.settings["shell.launch_apps_custom_command"] = "uwsm-app -- $CMD"
@@ -92,7 +120,7 @@ at(80000, "openlayer>>noctalia-panel")
 answer("status-launcher")
 at(81000, "closelayer>>noctalia-panel")
 at(81500, "openwindow>>3,1,dev.zed.Zed,Zed")
-check(lastNote(), "SUPER + SHIFT + Z|Open Zed  ×2", "launcher arms in the fallback")
+check(lastNote(), "SUPER + SHIFT + Z|Open Zed", "launcher arms in the fallback")
 
 -- No snippet list: binds from hyprctl; shadow binds still announce key presses.
 host.files["/run/user/1000/hypr-key-promoter.tsv"] = nil
@@ -129,35 +157,54 @@ check(string.find(lastLog(), "1 binds from snippet", 1, true) ~= nil, true, "con
 onIpc("show", "SUPER + B|Open Brave browser")
 check(lastNote(), "SUPER + B|Open Brave browser", "show")
 onIpc("stats", nil)
-check(string.find(lastLog(), "SUPER + 3 ×2", 1, true) ~= nil, true, "stats lists the top shortcut")
+check(string.find(lastLog(), "SUPER + SHIFT + Z ×2", 1, true) ~= nil, true, "stats lists the top shortcut")
 onIpc("reset", nil)
-check(next(host.json["encoded"]), nil, "reset clears counts")
+check(next(saved("/data/counts.json")), nil, "reset clears counts")
 onIpc("nonsense", nil)
 check(string.find(lastLog(), "unknown command", 1, true) ~= nil, true, "unknown command")
 
--- The corner box: the service sets the hint, opens the panel once, and closes it.
+-- The corner box: hints stack as rows, each leaving after 2.5 s; the panel
+-- opens with the first row and closes with the last.
+local function rowCombos()
+    local combos = {}
+    for _, row in host.state.hints or {} do
+        table.insert(combos, row.combo)
+    end
+    return table.concat(combos, "|")
+end
 host.config.notifications = false
 onConfigChanged()
 local notesBefore = #host.notes
 host.now = 200000
+local function toggled()
+    return table.concat(host.toggleLog, " ")
+end
 onIpc("show", "SUPER + B|Open Brave browser")
-check(host.state.hint and host.state.hint.combo, "SUPER + B", "box gets the hint")
-check(host.toggled, "furyfree/key-promoter:toast", "box panel id")
-check(host.toggles, 1, "box opened")
+check(rowCombos(), "SUPER + B", "box gets the hint")
+check(toggled(), "1", "the one-row box opens")
 check(host.interval, 100, "fast ticks while the box shows")
 check(#host.notes, notesBefore, "no notification when the box is on")
 host.now = 201000
 onIpc("show", "SUPER + 3|Switch to local workspace 3")
-check(host.toggles, 1, "a second hint reuses the open box")
+check(rowCombos(), "SUPER + B|SUPER + 3", "hints stack, newest last")
+check(toggled(), "1 2 1", "the two-row box opens before the one-row box closes")
 at(201010, "openlayer>>noctalia-panel")
 check(#host.async, 0, "the box opening is not taken for the launcher")
+host.now = 201500
+onIpc("show", "A|a")
+onIpc("show", "B|b")
+check(rowCombos(), "SUPER + 3|A|B", "at most three rows; the oldest goes")
+check(toggled(), "1 2 1 3 2", "grows to three rows, then stays")
 settle(203600)
-check(host.toggles, 2, "box closes after 2.5 s")
+check(rowCombos(), "A|B", "each row leaves after its own 2.5 s")
+check(toggled(), "1 2 1 3 2 2 3", "shrinks with its rows")
+settle(204100)
+check(toggled(), "1 2 1 3 2 2 3 2", "closes with the last row")
 check(host.interval, 60000, "ticks slow down again")
-at(203610, "closelayer>>noctalia-panel")
+at(204110, "closelayer>>noctalia-panel")
 at(210000, "workspacev2>>3,3")
 settle(210300)
-check(host.state.hint.combo, "SUPER + 3", "the box closing explains nothing")
+check(rowCombos(), "SUPER + 3", "the box closing explains nothing")
 
 if failures > 0 then
     error(`{failures} check(s) failed`)

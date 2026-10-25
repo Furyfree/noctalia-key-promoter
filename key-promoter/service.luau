@@ -1,35 +1,41 @@
 --!nonstrict
 -- Key Promoter service: reads Hyprland's socket2, decides with promoter.luau
--- and shows hints as Noctalia notifications.
+-- and shows hints in the corner box or as Noctalia notifications.
 local promoter = require("./promoter.luau")
 
 local LIST_NAME = "hypr-key-promoter.tsv"
 local WRAPPER = "key-promoter-launch"
 local TICK_MS = 100
 local IDLE_MS = 60000
-local TOAST = "furyfree/key-promoter:toast"
-local TOAST_MS = 2500
+local TOAST = "furyfree/key-promoter:hint-box-" -- plus the row count: hint-box-1..3
+local TOAST_MS = 2500 -- how long each hint row stays
+local TOAST_ROWS = 3
 
-local toastShownAt = nil -- when the corner box last got a hint; nil while closed
+local rows = {} -- hints in the box, oldest first: { combo, description, at }
+local openBox = 0 -- the row count of the box on screen; 0 while closed
 
 local source = "none" -- where the binds came from: snippet, hyprctl or none
 local shadows = false -- runtime shadow binds announce key presses
-local counts = {}
+local counts = {} -- hints shown per shortcut, for stats
+local unbound = {} -- shell launches of apps without a shortcut; see promoter.countUnbound
 local tracker
 
-local function countsPath(): string
-    return noctalia.pluginDataDir() .. "/counts.json"
+local function dataPath(name: string): string
+    return `{noctalia.pluginDataDir()}/{name}`
 end
 
-local function loadCounts()
-    local raw = noctalia.readFile(countsPath())
-    local ok, decoded = pcall(noctalia.json.decode, raw or "")
-    counts = if ok and type(decoded) == "table" then decoded else {}
+local function loadJson(name: string)
+    local ok, decoded = pcall(noctalia.json.decode, noctalia.readFile(dataPath(name)) or "")
+    return if ok and type(decoded) == "table" then decoded else {}
+end
+
+local function saveJson(name: string, value)
+    noctalia.mkdirAll(noctalia.pluginDataDir())
+    noctalia.writeFile(dataPath(name), noctalia.json.encode(value))
 end
 
 local function saveCounts()
-    noctalia.mkdirAll(noctalia.pluginDataDir())
-    noctalia.writeFile(countsPath(), noctalia.json.encode(counts))
+    saveJson("counts.json", counts)
 end
 
 local function wrapperConfigured(): boolean
@@ -38,16 +44,13 @@ local function wrapperConfigured(): boolean
 end
 
 local function currentSettings()
-    local seconds = tonumber(noctalia.getConfig("cooldown_s")) or 10
     return {
         appLaunches = noctalia.getConfig("app_launches") ~= false,
         -- Without bind markers every workspace change looks unannounced.
         workspaceSwitches = noctalia.getConfig("workspace_switches") ~= false and (source == "snippet" or shadows),
-        launchWindowMs = tonumber(noctalia.getConfig("launch_window_ms")) or 3000,
-        cooldownMs = seconds * 1000,
-        launcherLayers = noctalia.getConfig("launcher_layers") or {},
         wrapper = wrapperConfigured(),
         toast = noctalia.getConfig("notifications") ~= true,
+        ignore = noctalia.getConfig("ignore") or {},
     }
 end
 
@@ -103,29 +106,89 @@ local function loadBinds()
     end)
 end
 
-local function toggleToast()
+local function toggleToast(size: number)
     tracker:expectOwnPanel()
-    noctalia.togglePanel(TOAST)
+    noctalia.togglePanel(TOAST .. size)
+end
+
+-- Publishes the rows and shows the box that fits them: the new size opens
+-- before the old one closes, so the corner never goes empty in between.
+local function syncBox()
+    noctalia.state.set("hints", table.clone(rows))
+    local size = #rows
+    if size == openBox then
+        return
+    end
+    if size > 0 then
+        toggleToast(size)
+    end
+    if openBox > 0 then
+        toggleToast(openBox)
+    end
+    openBox = size
 end
 
 -- Shows a hint in the corner box, or as a notification when the user prefers.
-local function present(combo: string, description: string, count: number?)
+-- The box stacks up to TOAST_ROWS hints, each leaving after TOAST_MS. An
+-- empty combo shows the text alone.
+local function present(combo: string, description: string)
     if not tracker.settings.toast then
-        noctalia.notify(combo, if count then `{description}  ×{count}` else description)
+        noctalia.notify(if combo ~= "" then combo else "Key Promoter", description)
         return
     end
-    noctalia.state.set("hint", { combo = combo, description = description, count = count })
-    if not toastShownAt then
-        toggleToast()
+    if #rows >= TOAST_ROWS then
+        table.remove(rows, 1)
     end
-    toastShownAt = noctalia.nowMs()
+    table.insert(rows, { combo = combo, description = description, at = noctalia.nowMs() })
+    syncBox()
     noctalia.setUpdateInterval(TICK_MS)
+end
+
+-- Drops rows whose time is up; the box shrinks and closes with them.
+local function expireRows(now: number)
+    local kept = {}
+    for _, row in rows do
+        if now - row.at < TOAST_MS then
+            table.insert(kept, row)
+        end
+    end
+    if #kept ~= #rows then
+        rows = kept
+        syncBox()
+    end
 end
 
 local function show(hint)
     counts[hint.combo] = (counts[hint.combo] or 0) + 1
     saveCounts()
-    present(hint.combo, hint.description, if noctalia.getConfig("show_count") ~= false then counts[hint.combo] else nil)
+    present(hint.combo, hint.description)
+end
+
+
+-- Suggests a shortcut once an app without one was opened from the shell
+-- `suggest_after` times within the `suggest_period`. Wall-clock time, so the
+-- saved launches still count after a restart.
+local function countUnbound(app)
+    local threshold = tonumber(noctalia.getConfig("suggest_after")) or 5
+    if threshold <= 0 then
+        return
+    end
+    local periodMs = promoter.SUGGEST_PERIOD_MS[noctalia.getConfig("suggest_period")] or promoter.SUGGEST_PERIOD_MS.day
+    local suggest = promoter.countUnbound(unbound, string.lower(app.class), os.time() * 1000, threshold, periodMs)
+    saveJson("unbound.json", unbound)
+    if suggest then
+        present("", `No shortcut found for {promoter.appName(app.class, app.title)}`)
+    end
+end
+
+local function handleResult(result)
+    if not result then
+        return
+    elseif result.unbound then
+        countUnbound(result)
+    else
+        show(result)
+    end
 end
 
 -- Fallback without the wrapper: only the launcher arms a launch hint.
@@ -151,28 +214,19 @@ local function onLine(line: string)
     if event.kind == "openlayer" and not tracker.settings.wrapper and tracker.launcherLayers[event.namespace] then
         checkPanel()
     end
-    local hint = tracker:handle(event, noctalia.nowMs())
-    if hint then
-        show(hint)
-    end
+    handleResult(tracker:handle(event, noctalia.nowMs()))
     if tracker:hasPending() then
         noctalia.setUpdateInterval(TICK_MS)
     end
 end
 
--- Noctalia calls update() on the interval; it only runs fast while a
--- workspace change waits to be decided or the corner box is showing.
+-- Noctalia calls update() on the interval; it only runs fast while a launch
+-- or workspace change waits to be decided or the corner box is showing.
 function update()
     local now = noctalia.nowMs()
-    local hint = tracker:tick(now)
-    if hint then
-        show(hint)
-    end
-    if toastShownAt and now - toastShownAt >= TOAST_MS then
-        toastShownAt = nil
-        toggleToast()
-    end
-    if not tracker:hasPending() and not toastShownAt then
+    handleResult(tracker:tick(now))
+    expireRows(now)
+    if not tracker:hasPending() and #rows == 0 then
         noctalia.setUpdateInterval(IDLE_MS)
     end
 end
@@ -230,7 +284,8 @@ function onConfigChanged()
     rebuildTracker()
 end
 
-loadCounts()
+counts = loadJson("counts.json")
+unbound = loadJson("unbound.json")
 rebuildTracker()
 loadBinds()
 watchEvents()
