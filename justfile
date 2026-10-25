@@ -6,9 +6,9 @@ test:
     luau tests/promoter_test.luau
     sh tests/service_test.sh
     lua tests/snippet_test.lua
-    sh -n bin/key-promoter-launch
+    sh -n key-promoter/bin/key-promoter-launch
     sh tests/wrapper_test.sh
 
 # Cross-check declared settings against the plugin code
 lint:
-    noctalia plugins lint .
+    noctalia plugins lint key-promoter

@@ -1,0 +1,15 @@
+# Noctalia plugin source index: one [[plugin]] row per plugin folder.
+# Keep it in step with key-promoter/plugin.toml.
+
+[[plugin]]
+id = "furyfree/key-promoter"
+name = "Key Promoter"
+version = "0.1.0"
+author = "furyfree"
+license = "MIT"
+icon = "keyboard"
+description = "Shows the Hyprland shortcut when you open an app or switch workspace with the mouse."
+deprecated = false
+plugin_api = 30
+tags = ["utility", "hyprland"]
+dependencies = ["hyprctl", "socat", "stdbuf"]

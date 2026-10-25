@@ -33,7 +33,7 @@ os.getenv = function(name)
     if name == "XDG_RUNTIME_DIR" then return list_path:match("^(.*)/") end
     return real_getenv(name)
 end
-local snippet = dofile("hypr/key-promoter.lua")
+local snippet = dofile("key-promoter/hypr/key-promoter.lua")
 os.getenv = real_getenv
 list_path = snippet.list_path
 

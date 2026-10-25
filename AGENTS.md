@@ -7,8 +7,14 @@ the launch wrapper marks shell launches.
 
 ## Map
 
+The repo is a Noctalia git plugin source: `catalog.toml` at the root indexes
+the plugin, which lives in `key-promoter/` (the store's folder layout). Keep
+the catalog row in step with `plugin.toml` (version, `plugin_api`, metadata).
+Paths below are inside `key-promoter/` unless they start with `tests/`.
+
 - `plugin.toml`, `translations/en.json`: Noctalia manifest and setting labels.
   Every setting needs a `label_key`.
+- `README.md`, `thumbnail.webp`: the plugin's store page and card.
 - `service.luau`: Noctalia service: socket2 stream, shadow binds through
   `hyprctl eval`, hints, IPC.
 - `toast.luau`: the corner box, a persistent panel that never takes focus. The

@@ -4,12 +4,12 @@
 # the cases into one script next to promoter.luau and run that.
 set -eu
 
-script=.service_test.luau
+script=key-promoter/.service_test.luau
 trap 'rm -f -- "$script"' EXIT
 {
     cat tests/service_stub.luau
     # luau resolves "./promoter"; Noctalia wants the file name.
-    sed 's|require("./promoter.luau")|require("./promoter")|' service.luau
+    sed 's|require("./promoter.luau")|require("./promoter")|' key-promoter/service.luau
     cat tests/service_cases.luau
 } > "$script"
 luau "$script"

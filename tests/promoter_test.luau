@@ -1,6 +1,6 @@
 --!nonstrict
 -- Run from the repository root: luau tests/promoter_test.luau
-local promoter = require("../promoter")
+local promoter = require("../key-promoter/promoter")
 
 local failures = 0
 local function check(actual, expected, what)

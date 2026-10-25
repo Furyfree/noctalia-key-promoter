@@ -23,7 +23,7 @@ fail() {
 
 launch() {
     rm -f "$fake"/*.args
-    FAKE_DIR=$fake PATH="$fake:$PATH" sh bin/key-promoter-launch "$@"
+    FAKE_DIR=$fake PATH="$fake:$PATH" sh key-promoter/bin/key-promoter-launch "$@"
 }
 
 # The marker names the program, then the app starts with its arguments unchanged.
