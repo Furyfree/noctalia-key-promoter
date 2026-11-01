@@ -2,7 +2,7 @@
 -- Pure logic for the Key Promoter. No Noctalia calls, so plain Luau can test it.
 local M = {}
 
-M.VERSION = "0.2.0"
+M.VERSION = "0.2.1"
 
 -- Fixed rule timings in milliseconds.
 M.BIND_QUIET_MS = 750 -- a workspace change this soon after a bind came from it

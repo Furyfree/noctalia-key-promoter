@@ -46,12 +46,22 @@ noctalia msg plugin furyfree/key-promoter:service all show "SUPER + B|Open Brave
 
 ### Optional extras
 
-- **Better app matching:** `hypr/key-promoter.lua` records the command behind
-  each bind. Copy or link it to `~/.config/hypr/conf.d/key-promoter.lua` and
-  load it first in `hyprland.lua`, before any bind:
+- **Better app matching and swipe gestures:** `hypr/key-promoter.lua` records
+  the command behind each bind and tells the plugin when you use a gesture, so
+  a swipe to another workspace shows no hint. Copy or link it to
+  `~/.config/hypr/conf.d/key-promoter.lua` and load it first in
+  `hyprland.lua`, before any bind or gesture:
 
   ```lua
   pcall(require, "./conf.d/key-promoter.lua")
+  ```
+
+  Gestures are recognised when their action is Lua code, for example:
+
+  ```lua
+  hl.gesture({ fingers = 3, direction = "left", action = function()
+      hl.dispatch(hl.dsp.focus({ workspace = "r+1" }))
+  end })
   ```
 
 - **Dock and taskbar launches:** put `bin/key-promoter-launch` on `PATH` and
@@ -100,6 +110,10 @@ noctalia msg plugin $P all reset                                 # clear counts
 - **No network access.**
 - **Not detected:** actions that open no window, such as screenshots, and apps
   that steal focus without marking themselves urgent.
+- **Swipe gestures:** without the snippet, a workspace swipe looks like a bar
+  click and shows a hint. The snippet fixes this for gestures that run Lua,
+  not for Hyprland's built-in swipe (`action = "workspace"`). With that one,
+  use a Lua gesture as above or turn off `workspace_switches`.
 
 Inspired by Forrest Knight's
 [Omarchy Key Promoter](https://github.com/ForrestKnight/omarchy-key-promoter).

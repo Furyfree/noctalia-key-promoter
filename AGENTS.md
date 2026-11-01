@@ -26,7 +26,7 @@ Paths below are inside `key-promoter/` unless they start with `tests/`.
   panel that fits its rows.
 - `promoter.luau`: pure logic with no Noctalia calls, tested under plain Luau.
 - `hypr/key-promoter.lua`: Hyprland Lua snippet (Lua 5.5, not Luau). Wraps
-  `hl.bind` and writes the bind list to `$XDG_RUNTIME_DIR`.
+  `hl.bind` and `hl.gesture` and writes the bind list to `$XDG_RUNTIME_DIR`.
 - `bin/key-promoter-launch`: wrapper for Noctalia's
   `launch_apps_custom_command`; sends the `ui-launch` marker.
 - `tests/`: `*_test.luau` run with `luau`, `*_test.lua` with `lua`,

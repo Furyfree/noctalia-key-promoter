@@ -1,6 +1,6 @@
--- Key Promoter for Hyprland: makes keyboard binds announce themselves on
--- socket2 and writes the bind list the Noctalia plugin reads.
--- Load it before any hl.bind call, including the host file's.
+-- Key Promoter for Hyprland: makes keyboard binds and gestures announce
+-- themselves on socket2 and writes the bind list the Noctalia plugin reads.
+-- Load it before any hl.bind or hl.gesture call, including the host file's.
 local M = {}
 
 local runtime_dir = os.getenv("XDG_RUNTIME_DIR")
@@ -13,6 +13,7 @@ local targets = setmetatable({}, weak) -- action -> { class = ..., workspace = .
 local rows = {}
 
 local original_bind = hl.bind
+local original_gesture = hl.gesture
 local event = hl.dsp.event
 
 -- Tells the snippet which window a Lua function action opens.
@@ -117,6 +118,37 @@ hl.bind = function(keys, action, opts)
     local bind = original_bind(keys, ok and wrapped or action, opts)
     pcall(record, keys, action, options, bind)
     return bind
+end
+
+local function copy(source)
+    local result = {}
+    for key, value in pairs(source) do
+        result[key] = value
+    end
+    return result
+end
+
+-- Gestures that run Lua announce like binds, when they finish. Built-in
+-- actions such as "workspace" give no hook and pass through unchanged.
+local function announced_gesture(spec)
+    local keys = "gesture:" .. spec.fingers .. " " .. spec.direction
+    local action = spec.action
+    if type(action) == "function" then
+        action = announced(keys, action, {})
+    elseif type(action) == "table" and type(action.finish) == "function" then
+        action = copy(action)
+        action.finish = announced(keys, action.finish, {})
+    else
+        return spec
+    end
+    local wrapped = copy(spec)
+    wrapped.action = action
+    return wrapped
+end
+
+hl.gesture = function(spec)
+    local ok, wrapped = pcall(announced_gesture, spec)
+    return original_gesture(ok and wrapped or spec)
 end
 
 -- Start each config load with an empty list.

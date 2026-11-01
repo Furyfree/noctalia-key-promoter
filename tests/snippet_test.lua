@@ -5,12 +5,15 @@ local function new_dispatcher(name, arg)
     return setmetatable({ name = name, arg = arg }, { __name = "HL.Dispatcher" })
 end
 
-local binds, dispatched = {}, {}
+local binds, gestures, dispatched = {}, {}, {}
 _G.hl = {
     bind = function(keys, action, opts)
         local bind = { keys = keys, action = action, submap = opts and opts.submap_for_test or "" }
         table.insert(binds, bind)
         return bind
+    end,
+    gesture = function(spec)
+        table.insert(gestures, spec)
     end,
     dispatch = function(dispatcher)
         table.insert(dispatched, dispatcher)
@@ -114,6 +117,36 @@ local ok = pcall(hl.bind, {}, plain, { description = "Close focused window" })
 check(ok, true, "bind survives a snippet error")
 check(#binds, count + 1, "bind still registered")
 check(binds[#binds].action, plain, "bind registered unchanged")
+
+-- A gesture that runs Lua announces itself, then runs.
+local swiped = false
+hl.gesture({ fingers = 3, direction = "up", action = function() swiped = true; return "swiped" end })
+local gesture = gestures[#gestures]
+check(gesture.fingers, 3, "gesture keeps its fields")
+dispatched = {}
+check(gesture.action(), "swiped", "gesture result passes through")
+check(swiped, true, "gesture action ran")
+check(dispatched[1].arg, "keypromoter:bind,gesture:3 up", "gesture marker")
+
+-- A callback table announces when it finishes, not when it starts.
+local start = function() end
+hl.gesture({ fingers = 4, direction = "left", action = { start = start, finish = function() end } })
+gesture = gestures[#gestures]
+check(gesture.action.start, start, "start callback unchanged")
+dispatched = {}
+gesture.action.finish()
+check(dispatched[1].arg, "keypromoter:bind,gesture:4 left", "finish marker")
+
+-- Hyprland's built-in swipe has no hook and passes through unchanged.
+local builtin = { fingers = 3, direction = "horizontal", action = "workspace" }
+hl.gesture(builtin)
+check(gestures[#gestures], builtin, "built-in gesture unchanged")
+
+-- A snippet error never costs a gesture.
+local broken = { fingers = {}, direction = "down", action = function() end }
+ok = pcall(hl.gesture, broken)
+check(ok, true, "gesture survives a snippet error")
+check(gestures[#gestures], broken, "gesture registered unchanged")
 
 os.remove(list_path)
 print("snippet_test: ok")
