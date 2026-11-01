@@ -4,7 +4,7 @@
 [[plugin]]
 id = "furyfree/key-promoter"
 name = "Key Promoter"
-version = "0.2.1"
+version = "0.2.2"
 author = "furyfree"
 license = "MIT"
 icon = "keyboard"

@@ -120,29 +120,24 @@ hl.bind = function(keys, action, opts)
     return bind
 end
 
-local function copy(source)
-    local result = {}
-    for key, value in pairs(source) do
-        result[key] = value
-    end
-    return result
-end
-
--- Gestures that run Lua announce like binds, when they finish. Built-in
+-- Gestures that run Lua announce themselves with their own marker, so a swipe
+-- explains a workspace change without counting as a key press. Built-in
 -- actions such as "workspace" give no hook and pass through unchanged.
+local gesture_marker = event("keypromoter:gesture")
+
 local function announced_gesture(spec)
-    local keys = "gesture:" .. spec.fingers .. " " .. spec.direction
     local action = spec.action
-    if type(action) == "function" then
-        action = announced(keys, action, {})
-    elseif type(action) == "table" and type(action.finish) == "function" then
-        action = copy(action)
-        action.finish = announced(keys, action.finish, {})
-    else
+    if type(action) ~= "function" then
         return spec
     end
-    local wrapped = copy(spec)
-    wrapped.action = action
+    local wrapped = {}
+    for key, value in pairs(spec) do
+        wrapped[key] = value
+    end
+    wrapped.action = function(...)
+        hl.dispatch(gesture_marker)
+        return action(...)
+    end
     return wrapped
 end
 

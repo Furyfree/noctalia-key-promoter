@@ -2,14 +2,14 @@
 -- Pure logic for the Key Promoter. No Noctalia calls, so plain Luau can test it.
 local M = {}
 
-M.VERSION = "0.2.1"
+M.VERSION = "0.2.2"
 
 -- Fixed rule timings in milliseconds.
 M.BIND_QUIET_MS = 750 -- a workspace change this soon after a bind came from it
 -- Shadow binds run after the real bind, so their marker follows the workspace
 -- change. Wait this long before deciding.
 M.SETTLE_MS = 250
-M.EXPLAIN_MS = 1500 -- a closed layer, new window or urgent app explains a workspace change
+M.EXPLAIN_MS = 1500 -- a closed layer, new window, urgent app or gesture explains a workspace change
 M.SLOW_APP_MS = 10000 -- a window this soon after its own bind answers that bind
 M.STARTUP_MS = 3000
 M.HINT_GAP_MS = 1500 -- between workspace hints, so scrolling the bar gives one
@@ -81,6 +81,9 @@ function M.parseEvent(line: string): { [string]: any }?
         local keys = string.match(data, "^keypromoter:bind,(.*)$")
         if keys then
             return { kind = "bind", combo = keys }
+        end
+        if data == "keypromoter:gesture" then
+            return { kind = "gesture" }
         end
         local program = string.match(data, "^keypromoter:ui%-launch,(.*)$")
         if program then
@@ -709,7 +712,7 @@ function Tracker:handle(event, nowMs: number)
             self:explain(nowMs)
         end
         return unbound
-    elseif kind == "urgent" then
+    elseif kind == "urgent" or kind == "gesture" then
         self:explain(nowMs)
     elseif kind == "openwindow" then
         return self:onWindow(event, nowMs)

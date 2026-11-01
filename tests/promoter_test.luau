@@ -293,6 +293,9 @@ check(switch(t, 5000), nil, "new window explains it")
 t = promoter.newTracker(settings, zedBinds, 0)
 feed(t, "urgent>>abc", 4500)
 check(switch(t, 5000), nil, "urgent app explains it")
+t = promoter.newTracker(settings, zedBinds, 0)
+feed(t, "custom>>keypromoter:gesture", 4900)
+check(switch(t, 5000), nil, "gesture explains it")
 
 t = promoter.newTracker(settings, zedBinds, 0)
 switch(t, 5000) -- the plugin's hint
